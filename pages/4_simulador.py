@@ -4,15 +4,18 @@ import joblib
 
 st.set_page_config(layout="wide")
 
+st.caption("Proyecto de análisis y modelado de delitos - Argentina (2017–2024)")
+
 st.title("🎯 Simulador predictivo")
 
 st.write("""
-Estimación de la tasa de delitos contra la propiedad (cada 100.000 habitantes)
-utilizando el modelo Random Forest entrenado.
+Esta sección permite seleccionar un departamento y estimar su tasa de delitos contra la propiedad
+utilizando el modelo Random Forest entrenado. La predicción se compara con la tasa real observada
+para el año seleccionado.
 """)
 
 st.warning("""
-El modelo estima tasas agregadas. 
+El modelo estima tasas agregadas cada 100.000 habitantes. 
 No predice delitos individuales.
 """)
 
@@ -25,33 +28,30 @@ def cargar_modelo():
     features = joblib.load("models/features_modelo.pkl")
     return modelo, features
 
-modelo, features = cargar_modelo()
-
 # =========================
-# CARGA DATASET (para referencia)
+# CARGA DATASET
 # =========================
 @st.cache_data
 def cargar_datos():
     return pd.read_csv("data/final/dataset_mapa_sup_final.csv")
 
-df = cargar_datos()
+with st.spinner("Cargando modelo y datos..."):
+    modelo, features = cargar_modelo()
+    df = cargar_datos()
 
-# =========================
-# INPUTS DEL USUARIO
-# =========================
 # =========================
 # SELECCIÓN TERRITORIAL
 # =========================
-
 st.markdown("### Selección territorial")
 
 col1, col2, col3 = st.columns(3)
 
 with col1:
+    anios = sorted(df["anio"].dropna().unique())
     anio = st.selectbox(
         "Año",
-        sorted(df["anio"].dropna().unique()),
-        index=len(sorted(df["anio"].dropna().unique())) - 1
+        anios,
+        index=len(anios) - 1
     )
 
 with col2:
@@ -66,9 +66,10 @@ df_provincia = df[
 ].copy()
 
 with col3:
+    departamentos = sorted(df_provincia["departamento_nombre"].dropna().unique())
     departamento = st.selectbox(
         "Departamento",
-        sorted(df_provincia["departamento_nombre"].dropna().unique())
+        departamentos
     )
 
 fila = df_provincia[
@@ -82,18 +83,20 @@ st.markdown("### Resultado")
 
 if fila.empty:
     st.warning("No hay datos disponibles para la selección realizada.")
-else:
-    fila_modelo = fila.copy()
+    st.stop()
 
-    # Agregar columnas faltantes si el modelo las requiere
-    for col in features:
-        if col not in fila_modelo.columns:
-            fila_modelo[col] = 0
+fila_modelo = fila.copy()
 
-    # Ordenar columnas igual que en entrenamiento
-    X_pred = fila_modelo[features]
+# Agregar columnas faltantes si el modelo las requiere
+for col in features:
+    if col not in fila_modelo.columns:
+        fila_modelo[col] = 0
 
-    if st.button("Predecir tasa"):
+# Ordenar columnas igual que en entrenamiento
+X_pred = fila_modelo[features]
+
+if st.button("Predecir tasa"):
+    try:
         pred = modelo.predict(X_pred)[0]
 
         tasa_real = fila["tasa_delitos_propiedad_100k_v2"].iloc[0]
@@ -108,17 +111,28 @@ else:
             st.metric("Tasa real observada", f"{tasa_real:,.2f}")
 
         with col3:
-            st.metric("Diferencia", f"{diferencia:,.2f}")
+            st.metric(
+                "Diferencia",
+                f"{diferencia:,.2f}",
+                delta=f"{diferencia:,.2f}"
+            )
 
         q1 = df["tasa_delitos_propiedad_100k_v2"].quantile(0.33)
         q2 = df["tasa_delitos_propiedad_100k_v2"].quantile(0.66)
 
         if pred < q1:
-            st.info("Nivel bajo relativo")
+            st.success("Nivel bajo relativo")
         elif pred < q2:
             st.warning("Nivel medio relativo")
         else:
             st.error("Nivel alto relativo")
+
+        if diferencia > 0:
+            st.info("El modelo estimó una tasa superior a la observada.")
+        elif diferencia < 0:
+            st.info("El modelo estimó una tasa inferior a la observada.")
+        else:
+            st.info("La predicción coincide con la tasa observada.")
 
         st.markdown("### Variables utilizadas por el modelo")
 
@@ -136,6 +150,14 @@ else:
             col for col in variables_visibles if col in fila.columns
         ]
 
-        st.dataframe(
-            fila[variables_disponibles].T.rename(columns={fila.index[0]: "valor"})
+        tabla_variables = (
+            fila[variables_disponibles]
+            .T
+            .rename(columns={fila.index[0]: "valor"})
         )
+
+        st.dataframe(tabla_variables, width="stretch")
+
+    except Exception as e:
+        st.error("No se pudo generar la predicción.")
+        st.exception(e)

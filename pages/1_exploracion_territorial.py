@@ -7,29 +7,32 @@ from streamlit_folium import st_folium
 
 st.set_page_config(layout="wide")
 
+st.caption("Proyecto de análisis y modelado de delitos - Argentina (2017–2024)")
+
 st.title("📍 Exploración territorial")
 
-# =========================
-# CARGA DE DATOS
-# =========================
+st.write("""
+Esta sección permite analizar la distribución territorial de los delitos contra la propiedad,
+identificando departamentos con mayor tasa relativa y visualizando patrones espaciales en el mapa.
+""")
+
 @st.cache_data
 def cargar_datos():
     return pd.read_csv("data/final/dataset_mapa_sup_final.csv")
 
-df = cargar_datos()
+with st.spinner("Cargando datos..."):
+    df = cargar_datos()
 
-# =========================
-# FILTROS
-# =========================
 st.markdown("### Filtros")
 
 col1, col2 = st.columns(2)
 
 with col1:
+    anios = sorted(df["anio"].dropna().unique())
     anio = st.selectbox(
         "Año",
-        sorted(df["anio"].unique()),
-        index=len(sorted(df["anio"].unique())) - 1
+        anios,
+        index=len(anios) - 1
     )
 
 with col2:
@@ -38,43 +41,69 @@ with col2:
         ["Todas"] + sorted(df["provincia_nombre"].dropna().unique())
     )
 
-# =========================
-# FILTRADO
-# =========================
-df_filtrado = df[df["anio"] == anio]
+df_filtrado = df[df["anio"] == anio].copy()
 
 if provincia != "Todas":
-    df_filtrado = df_filtrado[df_filtrado["provincia_nombre"] == provincia]
+    df_filtrado = df_filtrado[df_filtrado["provincia_nombre"] == provincia].copy()
 
-# =========================
-# TOP DEPARTAMENTOS
-# =========================
-st.markdown("### Top departamentos")
+st.markdown("### Resumen del filtro seleccionado")
 
-top_df = df_filtrado.sort_values(
-    by="tasa_delitos_propiedad_100k_v2",
-    ascending=False
-).head(15)
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    st.metric("Departamentos", df_filtrado["departamento_nombre"].nunique())
+
+with col2:
+    st.metric(
+        "Tasa promedio",
+        f"{df_filtrado['tasa_delitos_propiedad_100k_v2'].mean():,.0f}"
+    )
+
+with col3:
+    st.metric(
+        "Tasa máxima",
+        f"{df_filtrado['tasa_delitos_propiedad_100k_v2'].max():,.0f}"
+    )
+
+st.markdown("---")
+
+st.markdown("### Top departamentos por tasa")
+
+top_df = (
+    df_filtrado
+    .sort_values(by="tasa_delitos_propiedad_100k_v2", ascending=False)
+    .head(15)
+    .sort_values(by="tasa_delitos_propiedad_100k_v2", ascending=True)
+)
 
 fig = px.bar(
     top_df,
-    x="departamento_nombre",
-    y="tasa_delitos_propiedad_100k_v2",
+    x="tasa_delitos_propiedad_100k_v2",
+    y="departamento_nombre",
     color="provincia_nombre",
-    title="Top 15 departamentos con mayor tasa de delitos"
+    orientation="h",
+    text="tasa_delitos_propiedad_100k_v2",
+    title=f"Top 15 departamentos con mayor tasa - {anio}"
+)
+
+fig.update_traces(
+    texttemplate="%{text:,.0f}",
+    textposition="outside"
 )
 
 fig.update_layout(
+    template="plotly_dark",
     title_x=0.5,
-    xaxis_tickangle=-45,
-    margin=dict(l=20, r=20, t=60, b=120)
+    xaxis_title="Tasa cada 100.000 habitantes",
+    yaxis_title="Departamento",
+    legend_title="Provincia",
+    margin=dict(l=20, r=20, t=70, b=40)
 )
 
 st.plotly_chart(fig, use_container_width=True)
 
-# =========================
-# MAPA PROFESIONAL
-# =========================
+st.markdown("---")
+
 st.markdown("### Mapa de delitos")
 
 def calcular_radio(valor, vmin, vmax, rmin=4, rmax=16):
@@ -87,7 +116,7 @@ def formatear_numero(valor, decimales=2):
 
 df_mapa = df_filtrado.dropna(
     subset=["lat", "lon", "tasa_delitos_propiedad_100k_v2"]
-)
+).copy()
 
 if df_mapa.empty:
     st.warning("No hay datos disponibles para los filtros seleccionados.")
@@ -112,29 +141,42 @@ else:
         vmin=tasa_min,
         vmax=tasa_max
     )
+
+    colormap.caption = "Tasa cada 100.000 habitantes"
     colormap.add_to(mapa)
 
     for _, row in df_mapa.iterrows():
         tasa = row["tasa_delitos_propiedad_100k_v2"]
         radio = calcular_radio(tasa, tasa_min, tasa_max)
 
+        hechos = row["delitos_propiedad_hechos"] if "delitos_propiedad_hechos" in row else None
+
         popup_html = f"""
-        <b>{row['departamento_nombre']}</b><br>
-        Provincia: {row['provincia_nombre']}<br>
-        Tasa: {formatear_numero(tasa)}
+        <div style="font-family: Arial; font-size: 13px; width: 260px;">
+            <b>{row['departamento_nombre']}</b><br>
+            Provincia: {row['provincia_nombre']}<br>
+            Año: {row['anio']}<br>
+            Tasa: {formatear_numero(tasa)}<br>
+            Hechos registrados: {formatear_numero(hechos, 0) if pd.notna(hechos) else 'N/D'}
+        </div>
         """
 
-        tooltip = f"{row['departamento_nombre']} | Tasa: {formatear_numero(tasa)}"
+        tooltip = (
+            f"{row['departamento_nombre']} | "
+            f"{row['provincia_nombre']} | "
+            f"Tasa: {formatear_numero(tasa)}"
+        )
 
         folium.CircleMarker(
             location=[row["lat"], row["lon"]],
             radius=radio,
-            popup=popup_html,
+            popup=folium.Popup(popup_html, max_width=320),
             tooltip=tooltip,
             color="#111",
+            weight=0.7,
             fill=True,
             fill_color=colormap(tasa),
             fill_opacity=0.8
         ).add_to(mapa)
 
-    st_folium(mapa, width=1200, height=650)
+    st_folium(mapa, use_container_width=True, height=650)

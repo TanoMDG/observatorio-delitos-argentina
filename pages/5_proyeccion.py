@@ -5,6 +5,8 @@ import plotly.graph_objects as go
 
 st.set_page_config(layout="wide")
 
+st.caption("Proyecto de análisis y modelado de delitos - Argentina (2017–2024)")
+
 st.title("🔮 Proyección con escenarios")
 
 st.write("""
@@ -27,8 +29,9 @@ def cargar_modelo():
     features = joblib.load("models/features_modelo.pkl")
     return modelo, features
 
-df = cargar_datos()
-modelo, features = cargar_modelo()
+with st.spinner("Cargando datos y modelo..."):
+    df = cargar_datos()
+    modelo, features = cargar_modelo()
 
 st.markdown("### Selección base")
 
@@ -63,13 +66,16 @@ if fila.empty:
 
 tasa_base = fila["tasa_delitos_propiedad_100k_v2"].iloc[0]
 
-col1, col2 = st.columns(2)
+col1, col2, col3 = st.columns(3)
 
 with col1:
     st.metric("Tasa base", f"{tasa_base:,.2f}")
 
 with col2:
     st.metric("Año base", anio_base)
+
+with col3:
+    st.metric("Departamento", departamento)
 
 st.markdown("### Escenario de simulación")
 
@@ -118,84 +124,104 @@ def ajustar_variables(fila_base, escenario_seleccionado):
 st.markdown("### Resultado de la proyección")
 
 if st.button("Generar proyección"):
-    resultados = []
+    try:
+        resultados = []
 
-    fila_actual = fila.copy()
-    tasa_lag = tasa_base
+        fila_actual = fila.copy()
+        tasa_lag = tasa_base
 
-    for i in range(1, horizonte + 1):
-        anio_proyectado = anio_base + i
+        for i in range(1, horizonte + 1):
+            anio_proyectado = anio_base + i
+            fila_escenario = ajustar_variables(fila_actual, escenario)
+            fila_escenario["tasa_lag1"] = tasa_lag
 
-        fila_escenario = ajustar_variables(fila_actual, escenario)
+            for col in features:
+                if col not in fila_escenario.columns:
+                    fila_escenario[col] = 0
 
-        fila_escenario["tasa_lag1"] = tasa_lag
+            X_future = fila_escenario[features]
+            pred = modelo.predict(X_future)[0]
 
-        for col in features:
-            if col not in fila_escenario.columns:
-                fila_escenario[col] = 0
+            resultados.append({
+                "anio": anio_proyectado,
+                "tipo": "Proyectado",
+                "tasa": pred
+            })
 
-        X_future = fila_escenario[features]
+            tasa_lag = pred
+            fila_actual = fila_escenario.copy()
 
-        pred = modelo.predict(X_future)[0]
+        df_resultados = pd.DataFrame(resultados)
 
-        resultados.append({
-            "anio": anio_proyectado,
-            "tipo": "Proyectado",
-            "tasa": pred
-        })
+        df_base = pd.DataFrame([{
+            "anio": anio_base,
+            "tipo": "Real base",
+            "tasa": tasa_base
+        }])
 
-        tasa_lag = pred
-        fila_actual = fila_escenario.copy()
+        df_plot = pd.concat([df_base, df_resultados], ignore_index=True)
 
-    df_resultados = pd.DataFrame(resultados)
+        tasa_final = df_resultados["tasa"].iloc[-1]
+        variacion_abs = tasa_final - tasa_base
+        variacion_pct = (variacion_abs / tasa_base) * 100 if tasa_base != 0 else 0
 
-    df_base = pd.DataFrame([{
-        "anio": anio_base,
-        "tipo": "Real base",
-        "tasa": tasa_base
-    }])
+        col1, col2, col3 = st.columns(3)
 
-    df_plot = pd.concat([df_base, df_resultados], ignore_index=True)
+        with col1:
+            st.metric("Tasa proyectada final", f"{tasa_final:,.2f}")
 
-    st.markdown("### Tabla de resultados")
-    st.dataframe(df_plot, use_container_width=True)
+        with col2:
+            st.metric("Variación absoluta", f"{variacion_abs:,.2f}")
 
-    st.info(
-        "La proyección utiliza la tasa estimada de cada año como tasa rezagada para el año siguiente. "
-        "Las demás variables se ajustan según el escenario seleccionado."
-    )
+        with col3:
+            st.metric("Variación %", f"{variacion_pct:,.2f}%")
 
-    fig = go.Figure()
+        fig = go.Figure()
 
-    fig.add_trace(go.Scatter(
-        x=df_base["anio"],
-        y=df_base["tasa"],
-        mode="markers",
-        name="Real base",
-        marker=dict(size=10)
-    ))
+        fig.add_trace(go.Scatter(
+            x=df_base["anio"],
+            y=df_base["tasa"],
+            mode="markers",
+            name="Real base",
+            marker=dict(size=10)
+        ))
 
-    fig.add_trace(go.Scatter(
-        x=df_resultados["anio"],
-        y=df_resultados["tasa"],
-        mode="lines+markers",
-        name="Proyectado",
-        line=dict(width=3, dash="dash")
-    ))
+        fig.add_trace(go.Scatter(
+            x=df_resultados["anio"],
+            y=df_resultados["tasa"],
+            mode="lines+markers",
+            name="Proyectado",
+            line=dict(width=3, dash="dash")
+        ))
 
-    fig.add_vline(
-        x=anio_base,
-        line_width=2,
-        line_dash="dot",
-        annotation_text="Inicio proyección",
-        annotation_position="top"
-    )
+        fig.add_vline(
+            x=anio_base,
+            line_width=2,
+            line_dash="dot",
+            annotation_text="Inicio proyección",
+            annotation_position="top"
+        )
 
-    fig.update_layout(
-        title=f"Proyección de tasa - {departamento}, {provincia}",
-        title_x=0.5,
-        xaxis_title="Año",
-        yaxis_title="Tasa cada 100.000 habitantes"
-    )
+        fig.update_layout(
+            template="plotly_dark",
+            title=f"Proyección de tasa - {departamento}, {provincia}",
+            title_x=0.5,
+            xaxis_title="Año",
+            yaxis_title="Tasa cada 100.000 habitantes",
+            hovermode="x unified",
+            legend=dict(orientation="h", y=1.02)
+        )
 
-    st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
+
+        st.markdown("### Tabla de resultados")
+        st.dataframe(df_plot, width="stretch")
+
+        st.info(
+            "La proyección utiliza la tasa estimada de cada año como tasa rezagada para el año siguiente. "
+            "Las demás variables se ajustan según el escenario seleccionado."
+        )
+
+    except Exception as e:
+        st.error("No se pudo generar la proyección.")
+        st.exception(e)
