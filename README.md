@@ -98,6 +98,7 @@ Copia_pre_proyecto/
 │   └── 6_metodologia.py
 │
 └── dashboard/
+```
 
 # 🗃️ Dataset
 
