@@ -1,0 +1,3 @@
+modelo,MAE_mean,MAE_std,RMSE_mean,RMSE_std,R2_mean,R2_std
+Random Forest,273.614,31.091,382.061,57.352,0.863,0.085
+XGBoost,278.908,13.983,397.11,44.217,0.856,0.073

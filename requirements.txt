@@ -8,3 +8,5 @@ folium
 streamlit-folium
 branca
 openpyxl
+xgboost
+shap
