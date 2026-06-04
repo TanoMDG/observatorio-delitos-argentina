@@ -186,7 +186,7 @@ tasa_delitos_propiedad_100k_v2 = (
 
 # 🤖 Modelado
 
-Se implementaron tres enfoques principales.
+Se implementaron cuatro enfoques principales.
 
 ## 1. Regresión Lineal
 
@@ -200,17 +200,47 @@ Modelo orientado a capturar heterogeneidad territorial entre departamentos, cont
 
 Modelo no lineal con mejor capacidad predictiva y mayor flexibilidad para capturar relaciones complejas entre variables.
 
+## 4. XGBoost
+
+Modelo de boosting basado en árboles de decisión que optimiza secuencialmente los errores de predicción. Obtuvo el mejor desempeño global del proyecto, superando levemente a Random Forest en las métricas de evaluación.
+
 ---
 
 # 📈 Resultados
 
-El modelo con mejor desempeño general fue **Random Forest**.
+El modelo con mejor desempeño general fue **XGBoost**.
 
-| Modelo             | MAE | RMSE | R²    |
-|--------------------|-----|------|-------|
-| Regresión Lineal   | 454 | 560  | 0.78  |
-| Efectos Fijos      | 377 | 496  | 0.83  |
-| Random Forest      | 270 | 386  | 0.897 |
+| Modelo           |    MAE |   RMSE |    R² |
+| ---------------- | -----: | -----: | ----: |
+| Regresión Lineal | 453.93 | 559.61 | 0.784 |
+| Efectos Fijos    | 377.60 | 496.36 | 0.833 |
+| Random Forest    | 269.36 | 386.05 | 0.897 |
+| XGBoost          | 266.08 | 380.44 | 0.900 |
+
+# 🔍 Interpretabilidad del modelo
+
+Para interpretar el comportamiento del modelo ganador se utilizó SHAP (SHapley Additive exPlanations), una metodología basada en teoría de juegos que permite cuantificar la contribución de cada variable a las predicciones.
+
+Los resultados mostraron que:
+
+- `tasa_lag1` es el predictor dominante.
+- Variables socioeconómicas como `variacion_anual_cbt` y `variacion_anual_salarios_pct` aportan información complementaria.
+- `log_densidad` conserva relevancia como variable estructural territorial.
+
+El uso de SHAP permitió complementar la capacidad predictiva de XGBoost con un análisis transparente e interpretable.
+
+# ⏳ Validación temporal
+
+Se implementó una estrategia de validación temporal tipo rolling/expanding window.
+
+En cada iteración los modelos fueron entrenados utilizando únicamente información disponible hasta un determinado año y evaluados sobre períodos posteriores.
+
+Los resultados mostraron:
+
+- estabilidad temporal del desempeño,
+- capacidad de generalización fuera de muestra,
+- consistencia entre Random Forest y XGBoost,
+- mejora progresiva a medida que aumenta la información disponible para entrenamiento.
 
 ## Interpretación general
 
@@ -221,6 +251,21 @@ Los resultados indican que:
 - `log_densidad` aporta información relevante,
 - las variables económicas muestran menor peso relativo,
 - Random Forest mejora el desempeño al capturar relaciones no lineales.
+
+# 🛡️ Análisis de robustez
+
+Se realizó una prueba de sensibilidad eliminando la variable `tasa_lag1`.
+
+Resultados:
+
+| Modelo | Escenario | R² |
+|----------|----------|----------:|
+| Random Forest | Con tasa_lag1 | 0.897 |
+| Random Forest | Sin tasa_lag1 | 0.330 |
+| XGBoost | Con tasa_lag1 | 0.900 |
+| XGBoost | Sin tasa_lag1 | 0.442 |
+
+La fuerte caída del desempeño confirma que la persistencia temporal constituye el principal componente explicativo del fenómeno.
 
 ---
 
@@ -253,10 +298,12 @@ Permite:
 
 Permite:
 
-- comparar modelos,
-- visualizar MAE, RMSE y R²,
+- comparar Regresión Lineal, Efectos Fijos, Random Forest y XGBoost,
+- visualizar métricas de desempeño,
 - analizar importancia de variables,
-- interpretar el desempeño predictivo.
+- interpretar resultados mediante SHAP,
+- evaluar estabilidad temporal,
+- analizar robustez del modelo.
 
 ---
 
@@ -364,6 +411,17 @@ streamlit run app.py
 ```
 
 ---
+
+# 🏆 Principales aportes
+
+- Construcción de un dataset integrado departamento–año para Argentina.
+- Incorporación de variables socioeconómicas y territoriales.
+- Comparación de modelos lineales y no lineales.
+- Implementación de XGBoost como modelo de mejor desempeño.
+- Aplicación de SHAP para interpretabilidad.
+- Validación temporal mediante rolling windows.
+- Pruebas de robustez eliminando variables rezagadas.
+- Desarrollo de una aplicación web interactiva para exploración, simulación y análisis territorial.
 
 # 📌 Consideraciones
 

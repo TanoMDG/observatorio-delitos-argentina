@@ -19,6 +19,11 @@ Las proyecciones no deben interpretarse como predicciones determinísticas.
 Representan simulaciones agregadas bajo supuestos de escenario.
 """)
 
+st.info("""
+La proyección utiliza, como punto de partida, el valor proyectado del último año observado del dataset (2024), siendo `tasa_lag1` del año siguiente.
+Por eso los resultados deben interpretarse como una simulación iterativa sensible a la persistencia temporal.
+""")
+
 @st.cache_data
 def cargar_datos():
     return pd.read_csv("data/final/dataset_mapa_sup_final.csv")
@@ -38,8 +43,9 @@ st.markdown("### Selección base")
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    anios = sorted(df["anio"].dropna().unique())
-    anio_base = st.selectbox("Año base", anios, index=len(anios) - 1)
+    anio_base = 2024
+
+st.metric("Año base", anio_base)
 
 with col2:
     provincia = st.selectbox(
@@ -91,32 +97,35 @@ with col2:
     horizonte = st.slider(
         "Años a proyectar",
         min_value=1,
-        max_value=3,
-        value=2
+        max_value=5,
+        value=3
     )
 
 st.markdown("#### Supuestos del escenario")
 
 if escenario == "Optimista":
-    st.success("↑ salarios, ↑ empleo, ↓ presión económica (CBT)")
+    st.success("↑ salarios, ↑ empleo, ↓ presión económica (CBT), ↓ inflación (IPC)")
 elif escenario == "Pesimista":
-    st.error("↓ salarios, ↓ empleo, ↑ presión económica (CBT)")
+    st.error("↓ salarios, ↓ empleo, ↑ presión económica (CBT), ↑ inflación (IPC)")
 else:
     st.info("Se mantienen condiciones del año base")
-
 
 def ajustar_variables(fila_base, escenario_seleccionado):
     fila_adj = fila_base.copy()
 
     if escenario_seleccionado == "Optimista":
-        fila_adj["variacion_anual_salarios_pct"] *= 1.2
-        fila_adj["variacion_empleo_const_pct"] *= 1.2
-        fila_adj["variacion_anual_cbt"] *= 0.8
+        fila_adj["variacion_anual_salarios_pct"] *= 1.5
+        fila_adj["variacion_anual_cbt"] *= 0.7
+        fila_adj["Indice_IPC_lag1"] *= 0.7
+        #fila_adj["variacion_empleo_const_pct"] += 5
+        #fila_adj["variacion_acceso_internet_pct"] *= 1.5
 
     elif escenario_seleccionado == "Pesimista":
-        fila_adj["variacion_anual_salarios_pct"] *= 0.8
-        fila_adj["variacion_empleo_const_pct"] *= 0.8
-        fila_adj["variacion_anual_cbt"] *= 1.2
+        fila_adj["variacion_anual_salarios_pct"] *= 1.0
+        fila_adj["variacion_anual_cbt"] *= 1.5
+        fila_adj["Indice_IPC_lag1"] *= 1.2
+        #fila_adj["variacion_empleo_const_pct"] -= 5
+        #fila_adj["variacion_acceso_internet_pct"] *= 0.6
 
     return fila_adj
 
@@ -218,8 +227,8 @@ if st.button("Generar proyección"):
         st.dataframe(df_plot, width="stretch")
 
         st.info(
-            "La proyección utiliza la tasa estimada de cada año como tasa rezagada para el año siguiente. "
-            "Las demás variables se ajustan según el escenario seleccionado."
+            "La proyección es iterativa: cada tasa proyectada se utiliza como `tasa_lag1` del año siguiente. "
+            "Los escenarios modifican algunas variables socioeconómicas de forma simplificada y exploratoria."
         )
 
     except Exception as e:

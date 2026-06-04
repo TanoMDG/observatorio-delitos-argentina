@@ -10,8 +10,13 @@ st.title("🎯 Simulador predictivo")
 
 st.write("""
 Esta sección permite seleccionar un departamento y estimar su tasa de delitos contra la propiedad
-utilizando el modelo Random Forest entrenado. La predicción se compara con la tasa real observada
+utilizando el modelo XGBoost entrenado. La predicción se compara con la tasa real observada
 para el año seleccionado.
+""")
+
+st.info("""
+La simulación utiliza las variables reales disponibles para el departamento y año seleccionados.
+No permite predecir un departamento inexistente ni cargar valores manuales en esta sección.
 """)
 
 st.warning("""
@@ -24,7 +29,7 @@ No predice delitos individuales.
 # =========================
 @st.cache_resource
 def cargar_modelo():
-    modelo = joblib.load("models/random_forest.pkl")
+    modelo = joblib.load("models/xgboost.pkl")
     features = joblib.load("models/features_modelo.pkl")
     return modelo, features
 
@@ -95,7 +100,7 @@ for col in features:
 # Ordenar columnas igual que en entrenamiento
 X_pred = fila_modelo[features]
 
-if st.button("Predecir tasa"):
+if st.button("Estimar tasa"):
     try:
         pred = modelo.predict(X_pred)[0]
 
